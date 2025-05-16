@@ -42,7 +42,8 @@ export class StratumV1Client {
     private statistics: StratumV1ClientStatistics;
     private stratumInitialized = false;
     private usedSuggestedDifficulty = false;
-    private sessionDifficulty: number = 16384;
+    private sessionDifficulty: number =
+      parseInt(process.env.SESSION_DIFFICULTY) || 16384;
 
     private entity: ClientEntity;
     private creatingEntity: Promise<void>;
@@ -53,8 +54,6 @@ export class StratumV1Client {
     public hashRate: number = 0;
 
     private buffer: string = '';
-
-    private miningSubmissionHashes = new Set<string>()
 
     constructor(
         public readonly socket: Socket,
@@ -136,7 +135,7 @@ export class StratumV1Client {
 
                 const validatorOptions: ValidatorOptions = {
                     whitelist: true,
-                    //forbidNonWhitelisted: true,
+                    forbidNonWhitelisted: true,
                 };
 
                 const errors = await validate(subscriptionMessage, validatorOptions);
@@ -180,7 +179,7 @@ export class StratumV1Client {
 
                 const validatorOptions: ValidatorOptions = {
                     whitelist: true,
-                    //forbidNonWhitelisted: true,
+                    forbidNonWhitelisted: true,
                 };
 
                 const errors = await validate(configurationMessage, validatorOptions);
@@ -218,7 +217,7 @@ export class StratumV1Client {
 
                 const validatorOptions: ValidatorOptions = {
                     whitelist: true,
-                    //forbidNonWhitelisted: true,
+                    forbidNonWhitelisted: true,
                 };
 
                 const errors = await validate(authorizationMessage, validatorOptions);
@@ -257,7 +256,7 @@ export class StratumV1Client {
 
                 const validatorOptions: ValidatorOptions = {
                     whitelist: true,
-                    //forbidNonWhitelisted: true,
+                    forbidNonWhitelisted: true,
                 };
 
                 const errors = await validate(suggestDifficultyMessage, validatorOptions);
@@ -302,7 +301,7 @@ export class StratumV1Client {
 
                 const validatorOptions: ValidatorOptions = {
                     whitelist: true,
-                    //forbidNonWhitelisted: true,
+                    forbidNonWhitelisted: true,
                 };
 
                 const errors = await validate(miningSubmitMessage, validatorOptions);
@@ -370,9 +369,6 @@ export class StratumV1Client {
 
         this.stratumSubscription = this.stratumV1JobsService.newMiningJob$.subscribe(async (jobTemplate) => {
             try {
-                if(jobTemplate.blockData.clearJobs){
-                    this.miningSubmissionHashes.clear();
-                }
                 await this.sendNewMiningJob(jobTemplate);
             } catch (e) {
                 await this.socket.end();
@@ -471,20 +467,6 @@ export class StratumV1Client {
             }
         }
 
-        const submissionHash = submission.hash();
-        if(this.miningSubmissionHashes.has(submissionHash)){
-            const err = new StratumErrorMessage(
-                submission.id,
-                eStratumErrorCode.DuplicateShare,
-                'Duplicate share').response();
-            const success = await this.write(err);
-            if (!success) {
-                return false;
-            }
-            return false;
-        }else{
-            this.miningSubmissionHashes.add(submissionHash);
-        }
 
         const job = this.stratumV1JobsService.getJobById(submission.jobId);
 
@@ -548,6 +530,16 @@ export class StratumV1Client {
 
             } catch (e) {
                 console.log(e);
+                const err = new StratumErrorMessage(
+                    submission.id,
+                    eStratumErrorCode.DuplicateShare,
+                    'Duplicate share').response();
+                console.error(err);
+                const success = await this.write(err);
+                if (!success) {
+                    return false;
+                }
+                return false;
             }
 
             if (submissionDifficulty > this.entity.bestDifficulty) {
